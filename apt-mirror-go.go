@@ -1,18 +1,22 @@
 package main
 
 import (
+	"compress/gzip"
 	"flag"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/url"
 	"os"
 	"os/exec"
 	"path"
+	"github.com/juju/ratelimit"
 )
 
 var (
-	dryRun bool
+	dryRun  bool
 	cfgFile string
+	bucket  *ratelimit.Bucket
 )
 
 func init() {
@@ -41,6 +45,11 @@ func main() {
 		nthreads = 1
 	}
 
+	rate := cfg.GetInt("rateperthread")
+	if rate > 0 {
+		bucket = ratelimit.NewBucketWithRate(float64(rate*1024), int64(rate*1024))
+	}
+
 	log.Printf("Path holding temp files(skel_path): %s", cfg.Variables["skel_path"])
 	log.Printf("Path holding mirrored files(mirror_path): %s", cfg.Variables["mirror_path"])
 	log.Printf("Will spawn %d goroutines to download packages.", nthreads)
@@ -49,30 +58,28 @@ func main() {
 	// download info files, process packages file and generate file list
 	debs := make(map[string]Package)
 	for _, repo := range cfg.Repositories {
-		if repo.Architecture == "src" {
-			// TODO: support source packages
-			continue
-		}
 		repo.DownloadInfoFiles(cfg)
 
 		for _, comp := range repo.Components {
 			pkgFile := cfg.SkelPath(repo.Packages(comp))
-			pkgStr, err := ioutil.ReadFile(pkgFile)
+			var f io.ReadCloser
+			f, err := os.Open(pkgFile)
 			if err != nil {
 				// maybe file not found, use gzipped file instead
 				pkgFile = cfg.SkelPath(repo.PackagesGZ(comp))
-				if _, err := os.Stat(pkgFile); err != nil {
-					log.Fatalf("Cannot find Packages file: %s", err)
-				}
-				pkgStr, err = exec.Command("gzip", "-cdfq", pkgFile).Output()
-				if err != nil {
-					log.Fatalf("Cannot open Packages file: %s", err)
+				f, err = os.Open(pkgFile)
+				if err == nil {
+					f, err = gzip.NewReader(f)
 				}
 			}
-			pkgs, err := ParsePackage(repo, string(pkgStr))
+			if err != nil {
+				log.Fatalf("Cannot open package file %s: %s", pkgFile, err)
+			}
+			pkgs, err := ParsePackage(repo, f)
 			if err != nil {
 				log.Fatalf("Cannot parse Packages file %s: %s", pkgFile, err)
 			}
+			f.Close()
 
 			for _, p := range pkgs {
 				m := cfg.MirrorPath(p.URL)
@@ -98,8 +105,6 @@ func main() {
 		fn := cfg.SkelPath(pkg.URL)
 		if stat, err := os.Stat(fn); err == nil {
 			log.Printf("%s size is %d, not %d", fn, stat.Size(), pkg.Size)
-		} else {
-			log.Printf("%s not found", fn)
 		}
 		ch <- pkg
 	}
@@ -187,7 +192,7 @@ func movefiles(src, dst string) {
 	if err != nil {
 		log.Fatalf("Cannot read contents of dir %s for read: %s", src, err)
 	}
-	
+
 	for _, dir := range dirs {
 		fn := path.Join(src, dir)
 		if err := exec.Command("mv", "-f", fn, dst).Run(); err != nil {

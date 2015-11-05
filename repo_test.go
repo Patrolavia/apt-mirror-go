@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -87,6 +88,58 @@ func TestParseRepoNormalCases(t *testing.T) {
 			if !reflect.DeepEqual(repo.Components, data[3:]) {
 				t.Errorf("Component mismatch: need %s, got %s", data[3:], repo.Components)
 			}
+		}
+	}
+}
+
+func TestParseRepoSources(t *testing.T) {
+	defaultArch := "amd64"
+	data := []string{"deb-src", "http://ftp.tw.debian.org/debian", "stable", "main"}
+	strs := []string{
+		strings.Join(data, "  "),                  // multiple spaces
+		" \t" + strings.Join(data, " \t") + " \t", // trim!
+	}
+
+	for _, str := range strs {
+		repos, err := ParseRepo(str, defaultArch)
+		if err != nil {
+			t.Errorf("Parse error when parsing [%s]: %s", str, err)
+		}
+		if len(repos) != 1 {
+			t.Fatalf("%s sould generate 2 record, got %d", str, len(repos))
+		}
+		repo := repos[0]
+		if repo.Architecture != "src" {
+			t.Errorf("Architecture mismatch in [%s]: %s", str, repo.Architecture)
+		}
+		if repo.Version != data[2] {
+			t.Errorf("Version mismatch in [%s]: %s", str, repo.Version)
+		}
+		if !reflect.DeepEqual(repo.Components, []string{data[3]}) {
+			t.Errorf("Component mismatch in [%s]: %s", str, repo.Components)
+		}
+	}
+}
+
+func TestRepoPackagesURL(t *testing.T) {
+	defaultArch := "amd64"
+	data := map[string]string{
+		"deb http://ftp.tw.debian.org/debian stable main":      "binary-amd64/Packages",
+		"deb-i386 http://ftp.tw.debian.org/debian stable main": "binary-i386/Packages",
+		"deb-src http://ftp.tw.debian.org/debian stable main":  "source/Sources",
+	}
+
+	for repoStr, archStr := range data {
+		repos, err := ParseRepo(repoStr, defaultArch)
+		if err != nil {
+			t.Errorf("Parse error when parsing [%s]: %s", repoStr, err)
+		}
+
+		repo := repos[0]
+		actual := repo.Packages("main").Path
+		expect := fmt.Sprintf("/debian/dists/stable/main/%s", archStr)
+		if expect != actual {
+			t.Errorf("Expected Packages url %s, got %s", expect, actual)
 		}
 	}
 }

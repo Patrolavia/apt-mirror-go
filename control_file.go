@@ -11,7 +11,7 @@ var ctrlRegexp *regexp.Regexp
 
 func init() {
 	var err error
-	if ctrlRegexp, err = regexp.Compile(`^[a-zA-Z0-9]+:`); err != nil {
+	if ctrlRegexp, err = regexp.Compile(`^[a-zA-Z0-9_-]+:`); err != nil {
 		log.Fatalf("Cannot compile regexp for parsing control file: %s", err)
 	}
 }
@@ -22,6 +22,10 @@ func ParseControlFile(data string) url.Values {
 	cur := ""
 
 	for lineno, line := range arr {
+		if line == "" {
+			// skip empty line
+			continue
+		}
 		lineno++
 		tag := ctrlRegexp.Find([]byte(line))
 		if tag == nil {
