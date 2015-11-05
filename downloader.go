@@ -16,19 +16,25 @@ type Downloader interface {
 	Download(u *url.URL, dst string) (resp *http.Response, err error)
 }
 
-type InvalidDownloader func(uri *url.URL) string
+type invalidDownloader struct {
+	logger func(uri *url.URL) string
+	ch     chan int
+}
 
-func (i InvalidDownloader) Download(u *url.URL, dst string) (resp *http.Response, err error) {
-	log.Fatal(i(u))
+func (i *invalidDownloader) Download(u *url.URL, dst string) (resp *http.Response, err error) {
+	log.Fatal(i.logger(u))
+	<-i.ch
 	return
 }
 
-type HttpDownloader struct {
+type httpDownloader struct {
 	bucket *ratelimit.Bucket
 	client *http.Client
+	ch     chan int
 }
 
-func (h *HttpDownloader) Download(u *url.URL, dst string) (resp *http.Response, err error) {
+func (h *httpDownloader) Download(u *url.URL, dst string) (resp *http.Response, err error) {
+	defer func() { <-h.ch }()
 	if h.client == nil {
 		h.client = http.DefaultClient
 	}
@@ -66,13 +72,31 @@ func (h *HttpDownloader) Download(u *url.URL, dst string) (resp *http.Response, 
 }
 
 type DownloadManager struct {
-	Inv  InvalidDownloader
-	HTTP *HttpDownloader
+	inv  *invalidDownloader
+	http *httpDownloader
+	ch   chan int
+}
+
+func NewManager(
+	logger func(uri *url.URL) string,
+	bucket *ratelimit.Bucket,
+	client *http.Client,
+	max int,
+) *DownloadManager {
+
+	ch := make(chan int, max)
+
+	return &DownloadManager{
+		inv:  &invalidDownloader{logger, ch},
+		http: &httpDownloader{bucket, client, ch},
+		ch:   ch,
+	}
 }
 
 func (d DownloadManager) Dispatch(u *url.URL) Downloader {
+	d.ch <- 1
 	if u.Scheme == "http" {
-		return d.HTTP
+		return d.http
 	}
-	return d.Inv
+	return d.inv
 }

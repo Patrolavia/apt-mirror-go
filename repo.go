@@ -105,7 +105,7 @@ func (r Repository) File(path string) (ret *url.URL) {
 
 func (r Repository) InfoFiles() (ret []*url.URL) {
 	comps := len(r.Components)
-	ret = make([]*url.URL, 2+comps*5)
+	ret = make([]*url.URL, 2+comps*3)
 	idx := 2
 	ret[0] = r.File(fmt.Sprintf("dists/%s/Release", r.Version))
 	ret[1] = r.File(fmt.Sprintf("dists/%s/Release.gpg", r.Version))
@@ -121,10 +121,6 @@ func (r Repository) InfoFiles() (ret []*url.URL) {
 		ret[idx] = r.File(fmt.Sprintf(
 			"dists/%s/%s/%s/Release",
 			r.Version, c, r.archPath))
-		idx++
-		ret[idx] = r.Packages(c)
-		idx++
-		ret[idx] = r.PackagesGZ(c)
 		idx++
 	}
 	return
@@ -176,40 +172,54 @@ func (r Repository) DownloadInfoFiles(cfg *Config, dlMgr *DownloadManager) {
 		}
 		return
 	}
+	decomp := func (u *url.URL, fn, tool, ext string) {
+		path := cfg.SkelPath(u)
+		log.Printf("Decompressing %s with %s", fn, tool)
+		nf := path + ext
+		if err := os.Rename(path, nf); err != nil {
+			// no matter success or not, run further
+			log.Printf("Cannot rename %s to %s, ignored: %s", path, nf, err)
+		}
+		runtime.GC()
+		if err := exec.Command(tool, "-dfkq", nf).Run(); err != nil {
+			// no matter success or not, run further
+			log.Printf("Cannot decompress %s using %s, ignored: %s", nf, tool, err)
+		}
+	}
 
 	// download info files
-	for _, u := range r.InfoFiles() {
+	go func() {
+		for _, u := range r.InfoFiles() {
+			tool, ext := down(u)
+
+			if fn := path.Base(u.Path); ext != "" && fn[len(fn)-len(ext):] != ext {
+				decomp(u, fn, tool, ext)
+			}
+		}
+
+		// download translations
+		transStr := cfg.Variables["translations"]
+		if transStr == "" {
+			return
+		}
+
+		arr := repoRegexp.Split(transStr, -1)
+		for _, t := range arr {
+			if t == "" {
+				continue
+			}
+			for _, u := range r.I18N(t) {
+				down(u)
+			}
+		}
+	}()
+
+	for _, c := range r.Components {
+		u := r.Packages(c)
 		tool, ext := down(u)
-
-		if fn := path.Base(u.Path); ext != "" && fn[len(fn)-len(ext):] != ext {
-			path := cfg.SkelPath(u)
-			log.Printf("Decompressing %s with %s", fn, tool)
-			nf := path + ext
-			if err := os.Rename(path, nf); err != nil {
-				// no matter success or not, run further
-				log.Printf("Cannot rename %s to %s, ignored: %s", path, nf, err)
-			}
-			runtime.GC()
-			if err := exec.Command(tool, "-dfkq", nf).Run(); err != nil {
-				// no matter success or not, run further
-				log.Printf("Cannot decompress %s using %s, ignored: %s", nf, tool, err)
-			}
+		if tool != "" {
+			decomp(u, path.Base(u.Path), tool, ext)
 		}
-	}
-
-	// download translations
-	transStr := cfg.Variables["translations"]
-	if transStr == "" {
-		return
-	}
-
-	arr := repoRegexp.Split(transStr, -1)
-	for _, t := range arr {
-		if t == "" {
-			continue
-		}
-		for _, u := range r.I18N(t) {
-			down(u)
-		}
+		go down(r.PackagesGZ(c))
 	}
 }

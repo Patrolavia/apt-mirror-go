@@ -53,15 +53,14 @@ func main() {
 		bucket = ratelimit.NewBucketWithRate(float64(rate*1024), int64(rate*1024))
 	}
 
-	dlMgr := &DownloadManager{
-		InvalidDownloader(func(u *url.URL) string {
+	dlMgr := NewManager(
+		func(u *url.URL) string {
 			return fmt.Sprintf("URL scheme %s of %s is not supported", u.Scheme, u)
-		}),
-		&HttpDownloader{
-			bucket,
-			http.DefaultClient,
 		},
-	}
+		bucket,
+		http.DefaultClient,
+		nthreads,
+	)
 
 	log.Printf("Path holding temp files(skel_path): %s", cfg.Variables["skel_path"])
 	log.Printf("Path holding mirrored files(mirror_path): %s", cfg.Variables["mirror_path"])
@@ -132,9 +131,35 @@ func worker(id int, cfg *Config, dlMgr *DownloadManager, ch chan Package, finish
 		if p.Test(cfg) {
 			continue
 		}
-		log.Printf("Worker#%d downloading %s", id, p.URL)
+
+		debugMsg := ""
+		// ========== debug log
+		debugMsg = " :"
+		m := cfg.MirrorPath(p.URL)
+		s := cfg.SkelPath(p.URL)
+		statM, errM := os.Stat(m)
+		statS, errS := os.Stat(s)
+		switch {
+		case errM == nil:
+			debugMsg += fmt.Sprintf("Size %d not %d", statM.Size(), p.Size)
+		case errS == nil:
+			debugMsg += fmt.Sprintf("Size %d not %d", statS.Size(), p.Size)
+		default:
+			debugMsg += "File not found"
+		}
+		// ========== end of debug
+
+		log.Printf("Worker#%d downloading %s%s", id, p.URL, debugMsg)
 		if !dryRun {
-			if err := p.Download(cfg, dlMgr.Dispatch(p.URL)); err != nil {
+			// max retry 3 times
+			maxRetry := 3
+			var err error
+			for i := 0; i < maxRetry; i++ {
+				if err = p.Download(cfg, dlMgr.Dispatch(p.URL)); err == nil {
+					break
+				}
+			}
+			if err != nil {
 				log.Fatalf("Error downloading %s: %s", p.URL, err)
 			}
 		}
