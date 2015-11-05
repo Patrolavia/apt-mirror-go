@@ -8,16 +8,12 @@ import (
 
 func TestParseConf(t *testing.T) {
 	expectVar := map[string]string{
-		"base_path":         "/data/apt-mirror",
-		"mirror_path":       "/data/apt-mirror/mirror",
-		"var_path":          "/data/apt-mirror/var",
-		"nthreads":          "20",
-		"cleanscript":       "/data/apt-mirror/var/clean.sh",
-		"_tilde":            "0",
-		"skel_path":         "/data/apt-mirror/skel",
-		"postmirror_script": "/data/apt-mirror/var/post-mirror.sh",
-		"run_postmirror":    "1",
-		"defaultarch":       "myarch",
+		"base_path":    "/data/apt-mirror",
+		"mirror_path":  "/data/apt-mirror/mirror",
+		"skel_path":    "/data/apt-mirror/skel",
+		"nthreads":     "5",
+		"defaultarch":  "myarch",
+		"translations": "en zh_TW",
 	}
 
 	str, err := ioutil.ReadFile("conf.sample")

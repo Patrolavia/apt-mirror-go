@@ -4,13 +4,9 @@ set base_path    /data/apt-mirror
 #
 set mirror_path  $base_path/mirror
 set skel_path    $base_path/skel
-set var_path     $base_path/var
-set cleanscript $var_path/clean.sh
 set defaultarch  myarch
-set postmirror_script $var_path/post-mirror.sh
-set run_postmirror 1
-set nthreads     20
-set _tilde 0
+set nthreads     5
+set translations en zh_TW
 #
 ############# end config ##############
 

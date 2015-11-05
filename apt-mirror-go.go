@@ -203,7 +203,7 @@ func doClean(dir string, debs map[string]bool) {
 				if children, err := c.Readdirnames(-1); err == nil && len(children) == 0 {
 					remove = true
 				}
-				
+
 				c.Close()
 				if remove {
 					log.Printf("Remove empty directory %s", dirn)
@@ -212,7 +212,7 @@ func doClean(dir string, debs map[string]bool) {
 					}
 				}
 			}
-			
+
 			continue
 		}
 
