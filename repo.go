@@ -9,7 +9,6 @@ import (
 	"path"
 	"reflect"
 	"regexp"
-	"runtime"
 	"strings"
 )
 
@@ -172,7 +171,7 @@ func (r Repository) DownloadInfoFiles(cfg *Config, dlMgr *DownloadManager) {
 		}
 		return
 	}
-	decomp := func (u *url.URL, fn, tool, ext string) {
+	decomp := func(u *url.URL, fn, tool, ext string) {
 		path := cfg.SkelPath(u)
 		log.Printf("Decompressing %s with %s", fn, tool)
 		nf := path + ext
@@ -180,7 +179,7 @@ func (r Repository) DownloadInfoFiles(cfg *Config, dlMgr *DownloadManager) {
 			// no matter success or not, run further
 			log.Printf("Cannot rename %s to %s, ignored: %s", path, nf, err)
 		}
-		runtime.GC()
+
 		if err := exec.Command(tool, "-dfkq", nf).Run(); err != nil {
 			// no matter success or not, run further
 			log.Printf("Cannot decompress %s using %s, ignored: %s", nf, tool, err)
@@ -220,6 +219,6 @@ func (r Repository) DownloadInfoFiles(cfg *Config, dlMgr *DownloadManager) {
 		if tool != "" {
 			decomp(u, path.Base(u.Path), tool, ext)
 		}
-		go down(r.PackagesGZ(c))
+		down(r.PackagesGZ(c))
 	}
 }

@@ -196,7 +196,23 @@ func doClean(dir string, debs map[string]bool) {
 
 	for _, child := range children {
 		if child.IsDir() {
-			doClean(path.Join(dir, child.Name()), debs)
+			dirn := path.Join(dir, child.Name())
+			doClean(dirn, debs)
+			if c, err := os.Open(dirn); err == nil {
+				remove := false
+				if children, err := c.Readdirnames(-1); err == nil && len(children) == 0 {
+					remove = true
+				}
+				
+				c.Close()
+				if remove {
+					log.Printf("Remove empty directory %s", dirn)
+					if !dryRun {
+						os.Remove(dirn)
+					}
+				}
+			}
+			
 			continue
 		}
 
@@ -224,8 +240,9 @@ func movefiles(src, dst string) {
 
 	for _, dir := range dirs {
 		fn := path.Join(src, dir)
-		if err := exec.Command("mv", "-f", fn, dst).Run(); err != nil {
+		if err := exec.Command("cp", "-r", fn, dst).Run(); err != nil {
 			log.Fatalf("Cannot move %s to %s: %s", fn, dst, err)
 		}
+		exec.Command("rm", "-fr", fn).Run()
 	}
 }
