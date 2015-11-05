@@ -48,7 +48,7 @@ func main() {
 	}
 
 	var bucket *ratelimit.Bucket = nil
-	rate := cfg.GetInt("rateperthread")
+	rate := cfg.GetInt("ratelimit")
 	if rate > 0 {
 		bucket = ratelimit.NewBucketWithRate(float64(rate*1024), int64(rate*1024))
 	}
