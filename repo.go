@@ -2,9 +2,7 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -156,36 +154,14 @@ func (r Repository) I18N(lang string) []*url.URL {
 	return ret
 }
 
-func (r Repository) DownloadInfoFiles(cfg *Config) {
+func (r Repository) DownloadInfoFiles(cfg *Config, dlMgr *DownloadManager) {
 	down := func(u *url.URL) (ret string, ext string) {
-		req, err := http.NewRequest("GET", u.String(), nil)
-		if err != nil {
-			return
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode >= 400 {
-			return
-		}
-
 		dst := cfg.SkelPath(u)
-		if err = os.MkdirAll(path.Dir(dst), 0755); err != nil {
-			log.Fatalf("Cannot create directory %s: %s", path.Dir(dst), err)
-		}
-
-		f, err := os.Create(dst)
+		resp, err := dlMgr.Dispatch(u).Download(u, dst)
 		if err != nil {
-			log.Fatalf("Cannot create file %s: %s", dst, err)
+			return
 		}
-		defer f.Close()
-
-		if _, err = io.Copy(f, resp.Body); err != nil {
-			log.Fatalf("Cannot save downloaded data into %s: %s", dst, err)
-		}
-		log.Printf("%s downloaded [%s]", u.String(), resp.Header.Get("Content-Type"))
+		log.Printf("Info file %s downloaded", u)
 
 		switch resp.Header.Get("Content-Type") {
 		case "application/x-gzip":

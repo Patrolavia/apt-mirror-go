@@ -3,14 +3,11 @@ package main
 import (
 	"bufio"
 	"io"
-	"log"
-	"net/http"
 	"net/url"
 	"os"
 	"path"
 	"strconv"
 	"strings"
-	"github.com/juju/ratelimit"
 )
 
 type Package struct {
@@ -118,45 +115,10 @@ func (p Package) Test(cfg *Config) bool {
 	return p.test(mirrorPath) || p.test(skelPath)
 }
 
-func (p Package) downloadHTTP(cfg *Config) error {
-	req, err := http.NewRequest("GET", p.URL.String(), nil)
-	if err != nil {
-		return err
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
+func (p Package) Download(cfg *Config, agent Downloader) error {
 	skelPath := cfg.SkelPath(p.URL)
-
-	if err = os.MkdirAll(path.Dir(skelPath), 0755); err != nil {
-		return err
-	}
-
-	f, err := os.Create(skelPath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	var src io.Reader = resp.Body
-
-	if bucket != nil {
-		src = ratelimit.Reader(resp.Body, bucket)
-	}
-	_, err = io.Copy(f, src)
+	_, err := agent.Download(p.URL, skelPath)
 	return err
-}
-
-func (p Package) Download(cfg *Config) error {
-	if p.URL.Scheme == "http" {
-		return p.downloadHTTP(cfg)
-	}
-	log.Printf("URL scheme %s is not supported.", p.URL.Scheme)
-	return nil
 }
 
 func (p Package) Move(cfg *Config) error {

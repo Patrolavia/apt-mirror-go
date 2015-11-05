@@ -3,20 +3,22 @@ package main
 import (
 	"compress/gzip"
 	"flag"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path"
+
 	"github.com/juju/ratelimit"
 )
 
 var (
 	dryRun  bool
 	cfgFile string
-	bucket  *ratelimit.Bucket
 )
 
 func init() {
@@ -45,20 +47,38 @@ func main() {
 		nthreads = 1
 	}
 
+	var bucket *ratelimit.Bucket = nil
 	rate := cfg.GetInt("rateperthread")
 	if rate > 0 {
 		bucket = ratelimit.NewBucketWithRate(float64(rate*1024), int64(rate*1024))
 	}
 
+	dlMgr := &DownloadManager{
+		InvalidDownloader(func(u *url.URL) string {
+			return fmt.Sprintf("URL scheme %s of %s is not supported", u.Scheme, u)
+		}),
+		&HttpDownloader{
+			bucket,
+			http.DefaultClient,
+		},
+	}
+
 	log.Printf("Path holding temp files(skel_path): %s", cfg.Variables["skel_path"])
 	log.Printf("Path holding mirrored files(mirror_path): %s", cfg.Variables["mirror_path"])
-	log.Printf("Will spawn %d goroutines to download packages.", nthreads)
 	log.Printf("Default architecture: %s", cfg.Variables["defaultarch"])
+	log.Printf("Spawning %d goroutines to download packages.", nthreads)
+
+	ch := make(chan Package)
+	finish := make(chan int)
+
+	for i := 0; i < nthreads; i++ {
+		go worker(i, cfg, dlMgr, ch, finish)
+	}
 
 	// download info files, process packages file and generate file list
-	debs := make(map[string]Package)
+	debs := make(map[string]bool)
 	for _, repo := range cfg.Repositories {
-		repo.DownloadInfoFiles(cfg)
+		repo.DownloadInfoFiles(cfg, dlMgr)
 
 		for _, comp := range repo.Components {
 			pkgFile := cfg.SkelPath(repo.Packages(comp))
@@ -83,32 +103,13 @@ func main() {
 
 			for _, p := range pkgs {
 				m := cfg.MirrorPath(p.URL)
-				debs[m] = p
+				debs[m] = true
+				ch <- p
 			}
 		}
 	}
-	log.Printf("Got %d package files ... ", len(debs))
-
-	ch := make(chan Package)
-	finish := make(chan int)
-
-	for i := 0; i < nthreads; i++ {
-		go worker(i, cfg, ch, finish)
-	}
-
-	for _, pkg := range debs {
-		if pkg.Test(cfg) {
-			// file exists, skip
-			continue
-		}
-		// debug: print out why
-		fn := cfg.SkelPath(pkg.URL)
-		if stat, err := os.Stat(fn); err == nil {
-			log.Printf("%s size is %d, not %d", fn, stat.Size(), pkg.Size)
-		}
-		ch <- pkg
-	}
 	close(ch)
+	log.Printf("Got %d package files ... ", len(debs))
 
 	// wait for download finish
 	for i := 0; i < nthreads; i++ {
@@ -126,11 +127,14 @@ func main() {
 
 }
 
-func worker(id int, cfg *Config, ch chan Package, finish chan int) {
+func worker(id int, cfg *Config, dlMgr *DownloadManager, ch chan Package, finish chan int) {
 	for p := range ch {
+		if p.Test(cfg) {
+			continue
+		}
 		log.Printf("Worker#%d downloading %s", id, p.URL)
 		if !dryRun {
-			if err := p.Download(cfg); err != nil {
+			if err := p.Download(cfg, dlMgr.Dispatch(p.URL)); err != nil {
 				log.Fatalf("Error downloading %s: %s", p.URL, err)
 			}
 		}
@@ -138,7 +142,7 @@ func worker(id int, cfg *Config, ch chan Package, finish chan int) {
 	finish <- 1
 }
 
-func clean(urlStr string, cfg *Config, debs map[string]Package) {
+func clean(urlStr string, cfg *Config, debs map[string]bool) {
 	u, err := url.Parse(urlStr)
 	if err != nil {
 		log.Fatalf("%s is not a valid url: %s", urlStr, err)
@@ -148,7 +152,7 @@ func clean(urlStr string, cfg *Config, debs map[string]Package) {
 	doClean(mirrorPath, debs)
 }
 
-func doClean(dir string, debs map[string]Package) {
+func doClean(dir string, debs map[string]bool) {
 	log.Printf("Cleaning %s", dir)
 	base, err := os.Open(dir)
 	if err != nil {
