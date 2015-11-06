@@ -12,6 +12,7 @@ import (
 	"github.com/juju/ratelimit"
 )
 
+// Downloader is an agent to download some kind of url
 type Downloader interface {
 	Download(u *url.URL, dst string) (resp *http.Response, err error)
 }
@@ -71,12 +72,22 @@ func (h *httpDownloader) Download(u *url.URL, dst string) (resp *http.Response, 
 	return
 }
 
+// DownloadManager dispatches url to correct downloader, and manages
+// the number of concurrent downloads.
 type DownloadManager struct {
 	inv  *invalidDownloader
 	http *httpDownloader
 	ch   chan int
 }
 
+/*
+NewManager creates a new DownloadManager.
+
+  logger is a function produce error message when there's unsupported url.
+  bucker is rate limiter.
+  client is http client to download data via http protocol.
+  max is max number of concurrent downloads.
+*/
 func NewManager(
 	logger func(uri *url.URL) string,
 	bucket *ratelimit.Bucket,
@@ -93,6 +104,7 @@ func NewManager(
 	}
 }
 
+// Dispatch returns correct download agnet for the url.
 func (d DownloadManager) Dispatch(u *url.URL) Downloader {
 	d.ch <- 1
 	if u.Scheme == "http" {

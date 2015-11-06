@@ -1,3 +1,4 @@
+// See https://github.com/Patrolavia/apt-mirror-go for detail.
 package main
 
 import (

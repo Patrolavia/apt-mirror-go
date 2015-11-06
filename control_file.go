@@ -16,6 +16,7 @@ func init() {
 	}
 }
 
+// ParseControlFile reads debian control file format into map[string][]string
 func ParseControlFile(data string) url.Values {
 	ret := url.Values(make(map[string][]string))
 	arr := strings.Split(data, "\n")

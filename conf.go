@@ -24,13 +24,22 @@ func init() {
 	}
 }
 
+/*
+Config is the data structure holding parsed configuration file.
+*/
 type Config struct {
 	Variables    map[string]string
 	Repositories []Repository
 	Clean        map[string]bool
 }
 
+/*
+ParseConfig parses configuration, and return a Config structure when success.
+
+Every variable used by apt-mirror-go has default value, see source code for detail.
+*/
 func ParseConfig(cfgString string) (ret *Config, err error) {
+	// setup default values
 	ret = &Config{
 		map[string]string{
 			"defaultarch":       strings.TrimSpace(string(defaultArch)),
@@ -53,6 +62,7 @@ func ParseConfig(cfgString string) (ret *Config, err error) {
 			continue
 		}
 
+		// test if we are declaring variable
 		if match := varRegexp.Find([]byte(line)); match != nil {
 			// setting variable
 			varName := string(match[4 : len(match)-1])
@@ -67,6 +77,7 @@ func ParseConfig(cfgString string) (ret *Config, err error) {
 			continue
 		}
 
+		// repository specification
 		if line[0:3] == "deb" {
 			// repository specification
 			repos, err := ParseRepo(line, ret.Variables["defaultarch"])
@@ -89,14 +100,18 @@ func ParseConfig(cfgString string) (ret *Config, err error) {
 			}
 		}
 
+		// specify what directory to clean
 		if line[0:6] == "clean " {
 			val := strings.TrimSpace(line[6:])
 			ret.Clean[val] = true
 		}
+
+		// other cases are ignored
 	}
 	return
 }
 
+// SkelPath returns the path to save downloaded data.
 func (c Config) SkelPath(u *url.URL) string {
 	return strings.Join([]string{
 		c.Variables["skel_path"],
@@ -104,6 +119,7 @@ func (c Config) SkelPath(u *url.URL) string {
 	}, "/")
 }
 
+// MirrorPath returns the where downloaded data should be moved to.
 func (c Config) MirrorPath(u *url.URL) string {
 	return strings.Join([]string{
 		c.Variables["mirror_path"],
@@ -111,6 +127,7 @@ func (c Config) MirrorPath(u *url.URL) string {
 	}, "/")
 }
 
+// GetInt returns value of variable in int type. Returns 0 is no such variable or not a number.
 func (c Config) GetInt(tag string) int {
 	s := c.Variables[tag]
 	ret, err := strconv.Atoi(s)

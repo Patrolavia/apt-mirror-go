@@ -10,13 +10,16 @@ import (
 	"strings"
 )
 
+// Package denotes a remote Debian package file.
 type Package struct {
 	URL    *url.URL
 	Size   int64
 	MD5Sum string
 }
 
+// ParsePackage parses Debian Packages or Sources file to find out all package files.
 func ParsePackage(repo Repository, r io.Reader) (ret []Package, err error) {
+	// src is how we parse Debian Sources file
 	src := func(p string) (err error) {
 		c := ParseControlFile(p)
 		fs, fsok := c["Files"]
@@ -39,6 +42,7 @@ func ParsePackage(repo Repository, r io.Reader) (ret []Package, err error) {
 		}
 		return
 	}
+	// bin is how we parse Debian Packages file
 	bin := func(p string) (err error) {
 		c := ParseControlFile(p)
 		f := strings.TrimSpace(c.Get("Filename"))
@@ -61,16 +65,18 @@ func ParsePackage(repo Repository, r io.Reader) (ret []Package, err error) {
 		do = src
 	}
 	ret = make([]Package, 0)
+
+	// process line by line to save memory
 	scanner := bufio.NewScanner(r)
 	pkgStr := ""
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		if line != "" {
+		if line != "" { // empty line delimits different packages
 			pkgStr += "\n" + line
 			continue
 		}
 
-		if pkgStr == "" {
+		if pkgStr == "" { // no package difination, skip
 			continue
 		}
 
@@ -108,6 +114,7 @@ func (p Package) test(path string) bool {
 	return true
 }
 
+// Test tests if we have this Debian package on disk now.
 func (p Package) Test(cfg *Config) bool {
 	mirrorPath := cfg.MirrorPath(p.URL)
 	skelPath := cfg.SkelPath(p.URL)
@@ -115,18 +122,9 @@ func (p Package) Test(cfg *Config) bool {
 	return p.test(mirrorPath) || p.test(skelPath)
 }
 
+// Download will download the Debian package into temporary (skel) directory
 func (p Package) Download(cfg *Config, agent Downloader) error {
 	skelPath := cfg.SkelPath(p.URL)
 	_, err := agent.Download(p.URL, skelPath)
 	return err
-}
-
-func (p Package) Move(cfg *Config) error {
-	src := cfg.SkelPath(p.URL)
-	dst := cfg.MirrorPath(p.URL)
-
-	if err := os.MkdirAll(path.Dir(dst), 0755); err != nil {
-		return err
-	}
-	return os.Rename(src, dst)
 }
