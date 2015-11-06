@@ -33,7 +33,7 @@ type Config struct {
 func ParseConfig(cfgString string) (ret *Config, err error) {
 	ret = &Config{
 		map[string]string{
-			"defaultarch":       string(defaultArch),
+			"defaultarch":       strings.TrimSpace(string(defaultArch)),
 			"base_path":         "/var/spool/apt-mirror",
 			"mirror_path":       "/var/spool/apt-mirror/mirror",
 			"skel_path":         "/var/spool/apt-mirror/skel",
