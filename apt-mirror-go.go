@@ -14,7 +14,7 @@ import (
 	"os/exec"
 	"path"
 
-	"github.com/juju/ratelimit"
+	"github.com/Patrolavia/ratelimit"
 )
 
 var (
@@ -51,7 +51,7 @@ func main() {
 	var bucket *ratelimit.Bucket = nil
 	rate := cfg.GetInt("ratelimit")
 	if rate > 0 {
-		bucket = ratelimit.NewBucketWithRate(float64(rate*1024), int64(rate*1024))
+		bucket = ratelimit.NewFromRate(float64(rate*1024), int64(rate*1024), 0)
 	}
 
 	dlMgr := NewManager(

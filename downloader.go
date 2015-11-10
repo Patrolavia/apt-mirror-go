@@ -9,7 +9,7 @@ import (
 	"os"
 	"path"
 
-	"github.com/juju/ratelimit"
+	"github.com/Patrolavia/ratelimit"
 )
 
 // Downloader is an agent to download some kind of url
@@ -65,7 +65,7 @@ func (h *httpDownloader) Download(u *url.URL, dst string) (resp *http.Response, 
 
 	var src io.Reader = resp.Body
 	if h.bucket != nil {
-		src = ratelimit.Reader(resp.Body, h.bucket)
+		src = ratelimit.NewReader(resp.Body, h.bucket)
 	}
 
 	_, err = io.Copy(f, src)
