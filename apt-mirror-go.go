@@ -51,6 +51,7 @@ func main() {
 	var bucket *ratelimit.Bucket = nil
 	rate := cfg.GetInt("ratelimit")
 	if rate > 0 {
+		log.Printf("Limit overall transfer rate to %dkb/s", rate)
 		bucket = ratelimit.NewFromRate(float64(rate*1024), int64(rate*1024), 0)
 	}
 
